@@ -1,30 +1,47 @@
 const express = require('express');
-const router = express.Router();
 const maxmind = require('maxmind');
+const router = express.Router();
 
-// Load MaxMind database
-const db = maxmind.openSync('path/to/your/maxmind/db.mmdb');
+// Load the MaxMind database
+const dbPath = process.env.MAXMIND_DB_PATH || './data/GeoLite2-City.mmdb';
+let lookup;
 
-// Route to get IP info
-router.get('/ip/:ip', (req, res) => {
-  const ip = req.params.ip;
-  const geo = db.get(ip);
-  res.json(geo);
-});
+(async () => {
+    try {
+        lookup = await maxmind.open(dbPath);
+        console.log('MaxMind database loaded successfully.');
+    } catch (error) {
+        console.error('Error loading MaxMind database:', error);
+        process.exit(1);
+    }
+})();
 
-// Route to get IP info with callback
-router.get('/ip/:ip/callback', (req, res) => {
-  const ip = req.params.ip;
-  const geo = db.get(ip);
-  res.jsonp(geo);
-});
+// Route to get IP information
+router.get('/ip-info', async (req, res) => {
+    const ip = req.query.ip || req.ip;
 
-// Route to get all IP info
-router.get('/ips', (req, res) => {
-  const ips = db.getAll();
-  res.json(ips);
+    if (!lookup) {
+        return res.status(500).json({ error: 'MaxMind database not loaded' });
+    }
+
+    try {
+        const geoData = lookup.get(ip);
+
+        if (!geoData) {
+            return res.status(404).json({ error: 'IP information not found' });
+        }
+
+        res.json({
+            ip: ip,
+            city: geoData.city?.names?.en || 'N/A',
+            country: geoData.country?.names?.en || 'N/A',
+            latitude: geoData.location?.latitude || 'N/A',
+            longitude: geoData.location?.longitude || 'N/A',
+        });
+    } catch (error) {
+        console.error('Error fetching IP information:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
 module.exports = router;
-
-
